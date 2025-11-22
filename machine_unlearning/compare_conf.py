@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from train import *
 from data.process_data.extract_fbank_feature import *
 import seaborn as sns
-from metric.memershipattack import *
+# from metric.memershipattack import *
 from ebranchformer import *
 
 

@@ -10,8 +10,15 @@ import random
 from utils import *
 from ebranchformer import *
 from data.process_data.extract_fbank_feature import *
-from metric.memershipattack import *
+# from metric.memershipattack import *
 from torch.nn.utils.rnn import pad_sequence
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_ROOT = os.path.join(BASE_DIR, "data", "all_data")
+TRAIN_SPLIT_DIR = os.path.join(DATA_ROOT, "train_split_by_patient")
+VAL_DIR = os.path.join(DATA_ROOT, "validation")
+TEST_DIR = os.path.join(DATA_ROOT, "test")
 
 
 def setup_seed(seed):
@@ -109,9 +116,9 @@ if __name__ == "__main__":
         weights = torch.FloatTensor([0.20, 0.50, 0.30])
     elif class_num == 5:
         weights = torch.FloatTensor([0.05, 0.15, 0.10, 0.50, 0.20])
-    train_path = '/home/osa/all_data/all_data/train_split_by_patient'
-    val_path = '/home/osa/all_data/all_data/validation'
-    test_path = '/home/osa/all_data/all_data/test'
+    train_path = TRAIN_SPLIT_DIR
+    val_path = VAL_DIR
+    test_path = TEST_DIR
 
     val_dataset = PSGDataset(val_path)
     test_dataset = PSGDataset(test_path)

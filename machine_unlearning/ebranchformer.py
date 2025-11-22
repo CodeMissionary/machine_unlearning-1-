@@ -890,7 +890,7 @@ class EBranchformerwithAdapter(AbsEncoder):
 
         self.encoders = repeat(
             num_blocks,
-            lambda lnum: EBranchformerEncoderwithAdapterLayer2(
+            lambda lnum: EBranchformerEncoderwithAdapterLayer(
                 encoder_dim,
                 encoder_selfattn_layer(*encoder_selfattn_layer_args),
                 cgmlp_layer(*cgmlp_layer_args),
@@ -905,7 +905,6 @@ class EBranchformerwithAdapter(AbsEncoder):
             layer_drop_rate,
         )
         self.after_norm = LayerNorm(encoder_dim)
-        EBranchformerEncoderwithAdapterLayer2 = EBranchformerEncoderwithAdapterLayer
 
         if interctc_layer_idx is None:
             interctc_layer_idx = []

@@ -28,6 +28,14 @@ from data.process_data.dataset import collate_fn
 from data.process_data.extract_fbank_feature import *
 from utils import *
 
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # /home/mzk/machine_unlearning
+DATA_ROOT = os.path.join(BASE_DIR, "data", "all_data")
+TRAIN_SPLIT_DIR = os.path.join(DATA_ROOT, "train_split_by_patient")
+VAL_DIR = os.path.join(DATA_ROOT, "validation")
+TEST_DIR = os.path.join(DATA_ROOT, "test")
+
 
 def train_one_epoch(model, dataloader, optimizer, weights, class_num, device):
     model.train()
@@ -206,36 +214,59 @@ def pre_train(model, train_dataloader, val_dataloader, epochs, best_premodel, de
 
 
 def adapter_train_one_epoch(amodel, random_model, num_lays, weights, patients_np, update_lr, device):
-    train_path = '/home/osa/all_data/all_data/train_split_by_patient'
+    # 用我们在文件顶部定义的 TRAIN_SPLIT_DIR
+    train_path = TRAIN_SPLIT_DIR
+
+    # 实际有多少个病人（= train_split_by_patient 下面有多少个子目录）
+    num_patients = len(patients_np)
+    if num_patients == 0:
+        raise RuntimeError(f"No patients found in {train_path}")
+
+    # 元训练迭代次数，最多 50 次，病人少就用病人数
+    num_meta_iters = min(50, num_patients)
+
     fast_weights = [param for name, param in amodel.named_parameters() if param.requires_grad]
-    # 元训练
-    for i in range(50):
-        sup_specified_idx = patients_np[i]
+
+    # ===== 元训练循环 =====
+    for i in range(num_meta_iters):
+        # ---------- support（忘记集） ----------
+        sup_specified_idx = patients_np[i % num_patients]
         sup_forget_path = os.path.join(train_path, sup_specified_idx)
         sup_forget_dataset = PSGDataset(sup_forget_path)
         sampler = get_balanced_sampler(sup_forget_dataset)
-        sup_forget_dataloader = DataLoader(sup_forget_dataset, batch_size=64, sampler=sampler, drop_last=False,
-                                           collate_fn=collate_fn)
-        sup_obtain_idx = patients_np[random.randint(62, 149)]  # 支持集的保留集
+        sup_forget_dataloader = DataLoader(
+            sup_forget_dataset, batch_size=64, sampler=sampler,
+            drop_last=False, collate_fn=collate_fn
+        )
+
+        # ---------- support（保留集） ----------
+        sup_obtain_idx = patients_np[np.random.randint(0, num_patients)]
         sup_obtain_path = os.path.join(train_path, sup_obtain_idx)
         sup_obtain_dataset = PSGDataset(sup_obtain_path)
-        sup_obtain_dataloader = DataLoader(sup_obtain_dataset, batch_size=64, shuffle=True, drop_last=False,
-                                           collate_fn=collate_fn)
-        rid = random.randint(0, 50)
-        while rid == i:
-            rid = random.randint(0, 50)
+        sup_obtain_dataloader = DataLoader(
+            sup_obtain_dataset, batch_size=64, shuffle=True,
+            drop_last=False, collate_fn=collate_fn
+        )
+
+        # ---------- query（忘记集） ----------
+        rid = np.random.randint(0, num_patients)
         query_specified_idx = patients_np[rid]
         query_forget_path = os.path.join(train_path, query_specified_idx)
         query_forget_dataset = PSGDataset(query_forget_path)
         sampler = get_balanced_sampler(query_forget_dataset)
-        query_forget_dataloader = DataLoader(query_forget_dataset, batch_size=64, sampler=sampler, drop_last=False,
-                                             collate_fn=collate_fn)
+        query_forget_dataloader = DataLoader(
+            query_forget_dataset, batch_size=64, sampler=sampler,
+            drop_last=False, collate_fn=collate_fn
+        )
 
-        query_obtain_idx = patients_np[random.randint(62, 149)]
+        # ---------- query（保留集） ----------
+        query_obtain_idx = patients_np[np.random.randint(0, num_patients)]
         query_obtain_path = os.path.join(train_path, query_obtain_idx)
         query_obtain_dataset = PSGDataset(query_obtain_path)
-        query_obtain_dataloader = DataLoader(query_obtain_dataset, batch_size=64, shuffle=True, drop_last=False,
-                                             collate_fn=collate_fn)
+        query_obtain_dataloader = DataLoader(
+            query_obtain_dataset, batch_size=64, shuffle=True,
+            drop_last=False, collate_fn=collate_fn
+        )
 
         grads = meta_adapter_train(amodel, random_model, sup_forget_dataloader, sup_obtain_dataloader,
                                    query_forget_dataloader, query_obtain_dataloader, num_lays, weights, device)
@@ -245,24 +276,39 @@ def adapter_train_one_epoch(amodel, random_model, num_lays, weights, patients_np
 
     # 元测试
     meta_matric = 0
-    for i in range(12):
-        specified_idx = patients_np[i + 50]
+    num_patients = len(patients_np)
+    if num_patients == 0:
+        raise RuntimeError(f"No patients found in {train_path}")
+
+    # 最多评估 12 次，但不能超过病人数量
+    num_eval_tasks = min(12, num_patients)
+
+    for i in range(num_eval_tasks):
+        # 选一个要“忘记”的病人：按顺序或者循环取
+        specified_idx = patients_np[i % num_patients]
 
         patient_path = os.path.join(train_path, specified_idx)
         patient_dataset = PSGDataset(patient_path)
 
         sampler = get_balanced_sampler(patient_dataset)
-        train_patient_dataloader = DataLoader(patient_dataset, batch_size=64, sampler=sampler, drop_last=False,
-                                              collate_fn=collate_fn)
+        train_patient_dataloader = DataLoader(
+            patient_dataset, batch_size=64, sampler=sampler,
+            drop_last=False, collate_fn=collate_fn
+        )
 
-        patient_dataloader = DataLoader(patient_dataset, batch_size=128, shuffle=True, drop_last=False,
-                                        collate_fn=collate_fn)
+        patient_dataloader = DataLoader(
+            patient_dataset, batch_size=128, shuffle=True,
+            drop_last=False, collate_fn=collate_fn
+        )
 
-        obtain_idx = patients_np[random.randint(62, 149)]
+        # 再随机选一个“保留”的病人（也只能在 0 ~ num_patients-1 里选）
+        obtain_idx = patients_np[random.randint(0, num_patients - 1)]
         obtain_path = os.path.join(train_path, obtain_idx)
         obtain_dataset = PSGDataset(obtain_path)
-        obtain_dataloader = DataLoader(obtain_dataset, batch_size=128, shuffle=True, drop_last=False,
-                                       collate_fn=collate_fn)
+        obtain_dataloader = DataLoader(
+            obtain_dataset, batch_size=128, shuffle=True,
+            drop_last=False, collate_fn=collate_fn
+        )
 
         copymodel = amodel
         copymodel.load_state_dict(amodel.state_dict())
@@ -303,7 +349,7 @@ def meta_train(loaded_model, amodel, random_model, train_dataloader, val_dataloa
                lr_adapter, bestname, savename, device):
     # 1 先训练不带adapter的模型
     best_premodel = './log1/class2_pretrain_epoch15_b32_best.pth'
-    pre_train(loaded_model, pre_train_dataloader, val_dataloader, 15, best_premodel, device)
+    pre_train(loaded_model, train_dataloader, val_dataloader, 15, best_premodel, device)
     # loaded_model.load_state_dict(torch.load(best_premodel, map_location=device))
 
     # 2 插入adapter
@@ -326,7 +372,13 @@ def meta_train(loaded_model, amodel, random_model, train_dataloader, val_dataloa
 
     writer = SummaryWriter()
     losses = []
-    patients_np = np.load('./data/process_data/patient_ids.npy')
+    patients_np = np.array(
+        sorted(
+            d for d in os.listdir(TRAIN_SPLIT_DIR)
+            if os.path.isdir(os.path.join(TRAIN_SPLIT_DIR, d))
+        )
+    )
+    print("patients_np:", patients_np)
     train_s_matric = 0
     weights = weights.to(device)
     # 4 交替训练
@@ -419,9 +471,9 @@ if __name__ == "__main__":
                                             cgmlp_linear_units=256, linear_units=256).to(device)
     random_model.eval()
 
-    val_path = '/home/osa/all_data/all_data/validation'
-    test_path = '/home/osa/all_data/all_data/test'
-    train_path = '/home/osa/all_data/all_data/train_split_by_patient'
+    val_path = VAL_DIR
+    test_path = TEST_DIR
+    train_path = TRAIN_SPLIT_DIR
     val_dataset = PSGDataset(val_path)
     test_dataset = PSGDataset(test_path)
     train_dataset = TrainAllDataset(train_path)

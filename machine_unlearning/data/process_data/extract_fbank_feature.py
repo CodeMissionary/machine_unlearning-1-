@@ -3,7 +3,14 @@ import torch
 import torchaudio
 import h5py
 from tqdm import tqdm
-from data.process_data.dataset import PSGAudioDataset, collate_fn
+
+try:
+    # 从 train.py 等模块方式导入时走这里
+    from data.process_data.dataset import PSGAudioDataset, collate_fn
+except ModuleNotFoundError:
+    # 如果你以后在 data/process_data 目录里直接 python extract_fbank_feature.py，
+    # 当前目录有 dataset.py，也能走到这里
+    from dataset import PSGAudioDataset, collate_fn
 from torch.utils.data import DataLoader
 from s3prl import hub
 from s3prl.upstream.baseline.hubconf import *
@@ -116,30 +123,69 @@ def extract(upstream, featurizer, dataloader, folder_path, device):
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    DATA_ROOT = '/home/osa/Mic_8000'
-    train_path = '../train_meta_data_streaming4train_step20sec.json'
-    val_path = '../dev_meta_data_streaming4train_step20sec.json'
-    test_path = '../test_meta_data_streaming4train_step20sec.json'
+
+    import os
+
+    # BASE_DIR 还是 process_data 这一层
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # .../data/process_data
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))  # .../machine_unlearning
+
+    # 新增：json 所在的目录是 data 这一层
+    META_DIR = os.path.dirname(BASE_DIR)  # .../data
+
+    # 原始 wav 目录
+    DATA_ROOT = "/home/mzk/Mic_8000"
+
+    # meta json 路径 ✅ 改成从 META_DIR 里取
+    train_path = os.path.join(META_DIR, "train_meta_dummy.json")
+    val_path = os.path.join(META_DIR, "dev_meta_dummy.json")
+    test_path = os.path.join(META_DIR, "test_meta_dummy.json")
+
+    # 特征输出目录：data/all_data/{train,validation,test}
+    FEAT_ROOT = os.path.join(PROJECT_ROOT, "data", "all_data")
+    train_out = os.path.join(FEAT_ROOT, "train")
+    val_out = os.path.join(FEAT_ROOT, "validation")
+    test_out = os.path.join(FEAT_ROOT, "test")
+    os.makedirs(train_out, exist_ok=True)
+    os.makedirs(val_out, exist_ok=True)
+    os.makedirs(test_out, exist_ok=True)
+
     class_num = 2
     batch_size = 256
     sampler = None
     num_workers = 6
+
     train_dataset = PSGAudioDataset(DATA_ROOT, train_path, False, class_num)
     val_dataset = PSGAudioDataset(DATA_ROOT, val_path, False, class_num)
     test_dataset = PSGAudioDataset(DATA_ROOT, test_path, False, class_num)
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=(sampler is None), sampler=sampler,
-                                  num_workers=num_workers, drop_last=False, collate_fn=collate_fn)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, sampler=sampler, drop_last=False,
-                                num_workers=num_workers, collate_fn=collate_fn)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, sampler=sampler, drop_last=False,
-                                 num_workers=num_workers, collate_fn=collate_fn)
-    upstream = getattr(hub, 'fbank')().to(device)
-    featurizer = Featurizer(upstream=upstream, feature_selection='hidden_states', layer_selection=None,
-                            upstream_device=device, normalize=False).to(device)
 
-    folder_path = "/home/osa/all_data/all_data/validation"
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=(sampler is None),
+        sampler=sampler, num_workers=num_workers, drop_last=False,
+        collate_fn=collate_fn
+    )
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False,
+        sampler=sampler, num_workers=num_workers, drop_last=False,
+        collate_fn=collate_fn
+    )
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False,
+        sampler=sampler, num_workers=num_workers, drop_last=False,
+        collate_fn=collate_fn
+    )
+
+    upstream = getattr(hub, "fbank")().to(device)
+    featurizer = Featurizer(
+        upstream=upstream, feature_selection="hidden_states", layer_selection=None,
+        upstream_device=device, normalize=False
+    ).to(device)
+
+    folder_path = val_out
     extract(upstream, featurizer, val_dataloader, folder_path, device)
-    folder_path = "/home/osa/all_data/all_data/train"
+
+    folder_path = train_out
     extract(upstream, featurizer, train_dataloader, folder_path, device)
-    folder_path = "/home/osa/all_data/all_data/test"
+
+    folder_path = test_out
     extract(upstream, featurizer, test_dataloader, folder_path, device)
