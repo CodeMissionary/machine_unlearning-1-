@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.nn import functional as F
 import seaborn as sns
 
-KL_temperature = 1
+KL_temperature = 15
 
 
 def get_balanced_sampler(dataset):

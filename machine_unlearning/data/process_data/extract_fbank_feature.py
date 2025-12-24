@@ -137,9 +137,9 @@ if __name__ == "__main__":
     DATA_ROOT = "/home/mzk/Mic_8000"
 
     # meta json 路径 ✅ 改成从 META_DIR 里取
-    train_path = os.path.join(META_DIR, "train_meta_dummy.json")
-    val_path = os.path.join(META_DIR, "dev_meta_dummy.json")
-    test_path = os.path.join(META_DIR, "test_meta_dummy.json")
+    train_path = os.path.join(META_DIR, "train_meta_data_streaming4train_step20sec.json")
+    val_path = os.path.join(META_DIR, "dev_meta_data_streaming4train_step20sec.json")
+    test_path = os.path.join(META_DIR, "test_meta_data_streaming4train_step20sec.json")
 
     # 特征输出目录：data/all_data/{train,validation,test}
     FEAT_ROOT = os.path.join(PROJECT_ROOT, "data", "all_data")
@@ -158,6 +158,16 @@ if __name__ == "__main__":
     train_dataset = PSGAudioDataset(DATA_ROOT, train_path, False, class_num)
     val_dataset = PSGAudioDataset(DATA_ROOT, val_path, False, class_num)
     test_dataset = PSGAudioDataset(DATA_ROOT, test_path, False, class_num)
+
+    print("DATA_ROOT:", DATA_ROOT)
+    print("train_path:", train_path)
+    print("train len:", len(train_dataset))
+    print("val len:", len(val_dataset))
+    print("test len:", len(test_dataset))
+    # 看看第一条样本长什么样（如果长度>0）
+    if len(train_dataset) > 0:
+        wav0, label0, name0, idx0 = train_dataset[0]
+        print("first sample:", name0, "label=", label0, "wav_len=", len(wav0))
 
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=(sampler is None),
